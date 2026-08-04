@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="32dp"
+    android:gravity="center"
+    android:background="#0F172A">
+
+    <!-- App Icon / Logo -->
+    <TextView
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:gravity="center"
+        android:text="📡"
+        android:textSize="40sp"
+        android:background="#1E293B"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="OmniSync"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="#F8FAFC"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Background Sync Agent"
+        android:textColor="#94A3B8"
+        android:textSize="14sp"
+        android:layout_marginBottom="40dp" />
+
+    <!-- Status indicator -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🟢 Connected — Syncing to Cloud"
+        android:textColor="#10B981"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Restart sync button -->
+    <Button
+        android:id="@+id/btnStartSync"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:text="Restart Sync Service"
+        android:backgroundTint="#6366F1"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Service auto-starts on phone reboot.\nNo configuration required."
+        android:textColor="#475569"
+        android:textSize="12sp"
+        android:gravity="center"
+        android:layout_marginTop="20dp" />
+
+</LinearLayout>
