@@ -1,0 +1,33 @@
+# Node dependencies - never commit these
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Android build outputs
+*.apk
+*.aab
+*.class
+.gradle/
+local.properties
+android-client/app/build/
+android-client/.gradle/
+android-client/local.properties
