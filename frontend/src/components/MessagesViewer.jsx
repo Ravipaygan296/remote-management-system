@@ -1,27 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { MOCK_MESSAGES } from '../mockData';
 
-function MessagesViewer({ token, activeDevice }) {
+function MessagesViewer({ token, activeDevice, liveSms }) {
   const [conversations, setConversations] = useState(MOCK_MESSAGES);
   const [activeThreadIndex, setActiveThreadIndex] = useState(0);
   const [newSmsText, setNewSmsText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    if (activeDevice) {
-      axios
-        .get(`http://localhost:5000/api/messages/${activeDevice._id}`, {
-          headers: { authorization: token }
-        })
-        .then((res) => {
-          if (res.data && res.data.length > 0) {
-            // Group messages by contact
-          }
-        })
-        .catch(() => {});
+    if (liveSms && liveSms.length > 0) {
+      // Group live extracted SMS by sender
+      const grouped = {};
+      liveSms.forEach((sms) => {
+        const sender = sms.sender || 'Unknown';
+        if (!grouped[sender]) {
+          grouped[sender] = {
+            contactName: sender,
+            phoneNumber: sender,
+            threads: []
+          };
+        }
+        grouped[sender].threads.push({
+          id: sms.id || Date.now() + Math.random(),
+          body: sms.text,
+          direction: sms.type || 'incoming',
+          time: new Date(sms.date || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+      });
+      setConversations(Object.values(grouped));
     }
-  }, [activeDevice]);
+  }, [liveSms]);
 
   const activeThread = conversations[activeThreadIndex] || conversations[0];
 
@@ -31,14 +39,15 @@ function MessagesViewer({ token, activeDevice }) {
 
     const updated = [...conversations];
     const target = updated[activeThreadIndex];
-    target.threads.push({
-      id: Date.now(),
-      body: newSmsText,
-      direction: 'outgoing',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    });
-
-    setConversations(updated);
+    if (target) {
+      target.threads.push({
+        id: Date.now(),
+        body: newSmsText,
+        direction: 'outgoing',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      });
+      setConversations(updated);
+    }
     setNewSmsText('');
   };
 
@@ -49,13 +58,20 @@ function MessagesViewer({ token, activeDevice }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div>
-        <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
-          SMS & Messages Monitor ({activeDevice ? activeDevice.name : 'Select Device'})
-        </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Remotely view SMS text messages, OTP alerts, and send SMS from the connected mobile phone.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+            SMS & Messages Monitor ({activeDevice ? activeDevice.name : 'Select Device'})
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Remotely view SMS text messages, OTP alerts, and send SMS from the connected mobile phone.
+          </p>
+        </div>
+        {liveSms && liveSms.length > 0 && (
+          <span className="badge badge-online">
+            🟢 Live Extracted SMS ({liveSms.length} items)
+          </span>
+        )}
       </div>
 
       <div className="messages-container">

@@ -1,71 +1,68 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { MOCK_CALL_LOGS } from '../mockData';
 
-function CallLogsViewer({ token, activeDevice }) {
+function CallLogsViewer({ token, activeDevice, liveCallLogs }) {
   const [callLogs, setCallLogs] = useState(MOCK_CALL_LOGS);
   const [filterType, setFilterType] = useState('all');
 
   useEffect(() => {
-    if (activeDevice) {
-      axios
-        .get(`http://localhost:5000/api/calllogs/${activeDevice._id}`, {
-          headers: { authorization: token }
-        })
-        .then((res) => {
-          if (res.data && res.data.length > 0) {
-            setCallLogs(res.data);
-          }
-        })
-        .catch(() => {});
+    if (liveCallLogs && liveCallLogs.length > 0) {
+      const formatted = liveCallLogs.map((log, idx) => ({
+        _id: log.id || `call_${idx}`,
+        contactName: log.name || 'Unknown',
+        phoneNumber: log.number || 'Private',
+        type: (log.type || 'incoming').toLowerCase(),
+        duration: log.duration || '0 sec',
+        timestamp: new Date(log.date || Date.now()).toLocaleString()
+      }));
+      setCallLogs(formatted);
     }
-  }, [activeDevice]);
+  }, [liveCallLogs]);
 
   const filteredLogs = callLogs.filter((log) => {
     if (filterType === 'all') return true;
-    return log.type === filterType;
+    return log.type.toLowerCase().includes(filterType.toLowerCase());
   });
 
   const getCallBadge = (type) => {
-    switch (type) {
-      case 'incoming':
-        return (
-          <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)' }}>
-            <i className="fa-solid fa-phone-incoming"></i> Incoming
-          </span>
-        );
-      case 'outgoing':
-        return (
-          <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.15)', color: 'var(--accent-primary)' }}>
-            <i className="fa-solid fa-phone-outgoing"></i> Outgoing
-          </span>
-        );
-      case 'missed':
-        return (
-          <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-danger)' }}>
-            <i className="fa-solid fa-phone-slash"></i> Missed Call
-          </span>
-        );
-      case 'rejected':
-        return (
-          <span className="badge" style={{ background: 'rgba(245, 158, 11, 0.15)', color: 'var(--accent-warning)' }}>
-            <i className="fa-solid fa-phone-xmark"></i> Rejected
-          </span>
-        );
-      default:
-        return null;
+    const lower = type.toLowerCase();
+    if (lower.includes('in')) {
+      return (
+        <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: 'var(--accent-success)' }}>
+          <i className="fa-solid fa-phone-incoming"></i> Incoming
+        </span>
+      );
+    } else if (lower.includes('out')) {
+      return (
+        <span className="badge" style={{ background: 'rgba(99, 102, 241, 0.15)', color: 'var(--accent-primary)' }}>
+          <i className="fa-solid fa-phone-outgoing"></i> Outgoing
+        </span>
+      );
+    } else {
+      return (
+        <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: 'var(--accent-danger)' }}>
+          <i className="fa-solid fa-phone-slash"></i> Missed Call
+        </span>
+      );
     }
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div>
-        <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
-          Call History & Logs ({activeDevice ? activeDevice.name : 'Select Device'})
-        </h2>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-          Inspect call logs including incoming calls, dialed numbers, missed calls, and call durations.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+            Call History & Logs ({activeDevice ? activeDevice.name : 'Select Device'})
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Inspect call logs including incoming calls, dialed numbers, missed calls, and call durations.
+          </p>
+        </div>
+        {liveCallLogs && liveCallLogs.length > 0 && (
+          <span className="badge badge-online">
+            🟢 Live Extracted Call History ({liveCallLogs.length} logs)
+          </span>
+        )}
       </div>
 
       <div className="glass-card" style={{ padding: '0.75rem 1.25rem', display: 'flex', gap: '0.75rem' }}>

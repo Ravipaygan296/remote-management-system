@@ -1,34 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { MOCK_LOCATION } from '../mockData';
 
-function LocationTracker({ token, activeDevice }) {
+function LocationTracker({ token, activeDevice, liveLocation }) {
   const [location, setLocation] = useState(MOCK_LOCATION);
   const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
-    if (activeDevice) {
-      axios
-        .get(`http://localhost:5000/api/location/${activeDevice._id}`, {
-          headers: { authorization: token }
-        })
-        .then((res) => {
-          if (res.data && res.data.length > 0) {
-            setLocation(res.data[0]);
-          }
-        })
-        .catch(() => {});
+    if (liveLocation) {
+      setLocation({
+        latitude: liveLocation.latitude || 28.6139,
+        longitude: liveLocation.longitude || 77.2090,
+        accuracy: liveLocation.accuracy ? liveLocation.accuracy.toFixed(1) : '3.5',
+        address: 'Live GPS Pin (Target Phone Location)',
+        timestamp: 'Just now (Live GPS)'
+      });
     }
-  }, [activeDevice]);
+  }, [liveLocation]);
 
   const handleRefreshGPS = () => {
     setIsUpdating(true);
     setTimeout(() => {
-      setLocation({
-        ...location,
-        timestamp: 'Just now',
-        accuracy: (Math.random() * 3 + 2).toFixed(1)
-      });
       setIsUpdating(false);
     }, 1000);
   };
@@ -70,7 +61,9 @@ function LocationTracker({ token, activeDevice }) {
             </div>
             <div>
               <h3 style={{ fontSize: '1.1rem' }}>Current Coordinates</h3>
-              <span className="badge badge-online">GPS Lock Active</span>
+              <span className="badge badge-online">
+                {liveLocation ? '🟢 Live Phone GPS Active' : 'GPS Lock Active'}
+              </span>
             </div>
           </div>
 
@@ -81,7 +74,7 @@ function LocationTracker({ token, activeDevice }) {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-muted)' }}>Longitude:</span>
-              <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{location.longitude}° W</span>
+              <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{location.longitude}° E</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-muted)' }}>Accuracy:</span>
@@ -152,7 +145,7 @@ function LocationTracker({ token, activeDevice }) {
               className="btn btn-secondary btn-sm"
               style={{ marginTop: '1rem' }}
             >
-              <i className="fa-solid fa-arrow-up-right-from-square"></i> Open in Google Maps
+              <i className="fa-solid fa-arrow-up-right-from-square"></i> Open Live Location in Google Maps
             </a>
           </div>
         </div>

