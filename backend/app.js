@@ -17,17 +17,23 @@ const fileRoutes = require('./routes/files');
 
 const app = express();
 const server = http.createServer(app);
+
+// Allow requests from all frontend origins (Vercel, Netlify, localhost, etc.)
 const io = new Server(server, {
     cors: {
-        origin: '*',
-        methods: ['GET', 'POST', 'PUT', 'DELETE']
+        origin: process.env.FRONTEND_URL || '*',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        credentials: true
     }
 });
 
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: process.env.FRONTEND_URL || '*',
+    credentials: true
+}));
 app.use(express.json());
 
 // Routes
