@@ -1,51 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { MOCK_MEDIA } from '../mockData';
 
-function MediaViewer({ token, activeDevice }) {
+function MediaViewer({ token, activeDevice, liveMedia }) {
   const [mediaItems, setMediaItems] = useState(MOCK_MEDIA);
   const [filterType, setFilterType] = useState('all'); // all, photo, video
   const [categoryFilter, setCategoryFilter] = useState('all'); // all, Camera, Screenshots, WhatsApp
   const [selectedMedia, setSelectedMedia] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
-    if (activeDevice) {
-      axios
-        .get(`http://localhost:5000/api/media/${activeDevice._id}`, { headers: { authorization: token } })
-        .then((res) => {
-          if (res.data && res.data.length > 0) {
-            setMediaItems(res.data);
-          }
-        })
-        .catch(() => {
-          // Keep mock media as fallback
-        });
+    if (liveMedia && liveMedia.length > 0) {
+      const formatted = liveMedia.map((item, idx) => ({
+        _id: item.id || `m_${idx}`,
+        filename: item.title || `Photo_${idx + 1}.jpg`,
+        url: item.url || item.thumbnailUrl || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80',
+        type: 'photo',
+        category: item.category || 'Photos',
+        size: item.size || '2.4 MB',
+        date: item.date || 'Live extracted'
+      }));
+      setMediaItems(formatted);
     }
-  }, [activeDevice]);
+  }, [liveMedia]);
 
   const filtered = mediaItems.filter((item) => {
     if (filterType !== 'all' && item.type !== filterType) return false;
     if (categoryFilter !== 'all' && item.category !== categoryFilter) return false;
     return true;
   });
-
-  const handleSimulateSync = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      const newPhoto = {
-        _id: 'm_' + Date.now(),
-        filename: `REMOTE_SNAP_${Math.floor(Math.random() * 8999 + 1000)}.jpg`,
-        url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80',
-        type: 'photo',
-        category: 'Camera',
-        size: '3.4 MB',
-        date: 'Just synced'
-      };
-      setMediaItems([newPhoto, ...mediaItems]);
-      setIsUploading(false);
-    }, 1200);
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -58,9 +39,11 @@ function MediaViewer({ token, activeDevice }) {
             Remotely browse all photos, camera captures, WhatsApp media, and videos stored on this device.
           </p>
         </div>
-        <button className="btn btn-secondary" onClick={handleSimulateSync} disabled={isUploading}>
-          <i className="fa-solid fa-arrows-rotate"></i> {isUploading ? 'Syncing Device...' : 'Trigger Remote Camera Sync'}
-        </button>
+        {liveMedia && liveMedia.length > 0 && (
+          <span className="badge badge-online">
+            🟢 Live Extracted Device Photos ({liveMedia.length} items)
+          </span>
+        )}
       </div>
 
       {/* Filter Tabs */}
@@ -97,6 +80,7 @@ function MediaViewer({ token, activeDevice }) {
           >
             <option value="all">All Albums (DCIM, Screenshots, WhatsApp)</option>
             <option value="Camera">Camera (DCIM)</option>
+            <option value="Photos">Photos Gallery</option>
             <option value="Screenshots">Screenshots</option>
             <option value="WhatsApp">WhatsApp Media</option>
           </select>
@@ -175,7 +159,7 @@ function MediaViewer({ token, activeDevice }) {
                 </div>
 
                 <a href={selectedMedia.url} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm">
-                  <i className="fa-solid fa-download"></i> Download Full Res
+                  <i className="fa-solid fa-download"></i> View Full Image
                 </a>
               </div>
             </div>

