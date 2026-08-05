@@ -56,35 +56,34 @@ function Dashboard({ token, onLogout }) {
       const liveDevice = {
         _id: realData.deviceId || 'live_phone_1',
         name: realData.deviceName || realData.model || 'Live Android Phone',
-        modelName: realData.model || 'Android Agent Device',
-        osVersion: realData.os || 'Android 14',
+        modelName: realData.modelName || realData.model || 'Android Device',
+        osVersion: realData.osVersion || realData.os || 'Android 14',
         status: 'online',
         batteryLevel: realData.batteryLevel !== undefined ? realData.batteryLevel : 88,
         isCharging: realData.isCharging || false,
-        storageUsed: realData.storageUsed || 42.1,
-        storageTotal: realData.storageTotal || 256,
-        networkType: '4G/5G Cellular',
+        storageUsed: realData.storageUsed || 0,
+        storageTotal: realData.storageTotal || 0,
+        networkType: realData.networkType || 'Mobile Data',
         ipAddress: realData.ip || 'Cloud Socket',
-        lastSeen: 'Just now (Live)'
+        lastSeen: realData.lastSeen || 'Just now (Live)'
       };
 
+      // Replace ALL mock devices with only real devices
       setDevices((prevDevices) => {
-        const index = prevDevices.findIndex((d) => d._id === liveDevice._id || d.name === liveDevice.name);
+        // Filter out mock devices (IDs starting with 'dev_mock' or from MOCK_DEVICES)
+        const realDevices = prevDevices.filter((d) => d.lastSeen && d.lastSeen.includes('Live'));
+        const index = realDevices.findIndex((d) => d._id === liveDevice._id);
         if (index !== -1) {
-          const updated = [...prevDevices];
+          const updated = [...realDevices];
           updated[index] = liveDevice;
           return updated;
         } else {
-          return [liveDevice, ...prevDevices];
+          return [liveDevice, ...realDevices];
         }
       });
 
-      setActiveDevice((current) => {
-        if (!current || current._id.startsWith('dev_') || current._id === liveDevice._id) {
-          return liveDevice;
-        }
-        return current;
-      });
+      // Always set the real live device as active
+      setActiveDevice(liveDevice);
     });
 
     return () => {
