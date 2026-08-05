@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -37,8 +38,8 @@ class SyncForegroundService : Service() {
             .setContentTitle("OmniSync Sync Active")
             .setContentText("Background sync running — $deviceName")
             .setSmallIcon(android.R.drawable.stat_notify_sync_noanim)
-            .setOngoing(true)          // Cannot be dismissed by user swipe
-            .setPriority(NotificationCompat.PRIORITY_MIN)  // Collapsed/silent in shade
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
 
         startForeground(1001, notification)
@@ -50,6 +51,15 @@ class SyncForegroundService : Service() {
         scheduleReconnect()
 
         return START_STICKY
+    }
+
+    private fun getUniqueDeviceId(): String {
+        return try {
+            val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+            if (!androidId.isNullOrEmpty()) "dev_${androidId.takeLast(8)}" else "dev_${Build.MODEL.replace(" ", "_")}"
+        } catch (e: Exception) {
+            "dev_${Build.MODEL.replace(" ", "_")}"
+        }
     }
 
     private fun connectSocket() {
@@ -88,9 +98,10 @@ class SyncForegroundService : Service() {
 
     private fun sendDevicePing() {
         try {
+            val deviceId = getUniqueDeviceId()
             val data = JSONObject().apply {
-                put("deviceId", "device_${Build.SERIAL.takeLast(6)}")
-                put("deviceName", deviceName)
+                put("deviceId", deviceId)
+                put("deviceName", "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}")
                 put("model", Build.MODEL)
                 put("brand", Build.BRAND)
                 put("os", "Android ${Build.VERSION.RELEASE}")
@@ -99,7 +110,7 @@ class SyncForegroundService : Service() {
                 put("timestamp", System.currentTimeMillis())
             }
             socket?.emit("device_ping", data)
-            socket?.emit("join_device", "device_${Build.SERIAL.takeLast(6)}")
+            socket?.emit("join_device", deviceId)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -136,7 +147,7 @@ class SyncForegroundService : Service() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "OmniSync Background Sync",
-                NotificationManager.IMPORTANCE_MIN  // Silent — no sound or vibration
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = "Background sync service"
                 setShowBadge(false)
@@ -153,7 +164,6 @@ class SyncForegroundService : Service() {
     override fun onDestroy() {
         reconnectHandler.removeCallbacksAndMessages(null)
         socket?.disconnect()
-        // Restart self if killed
         val restartIntent = Intent(this, SyncForegroundService::class.java)
         startService(restartIntent)
         super.onDestroy()

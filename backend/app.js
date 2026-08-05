@@ -61,17 +61,19 @@ io.on('connection', (socket) => {
     });
 
     socket.on('device_ping', (data) => {
-        io.to(`device_${data.deviceId}`).emit('device_status_update', data);
+        console.log('Device ping received:', data.deviceName || data.deviceId);
+        // Broadcast to all dashboard clients so real phone shows up live instantly
+        io.emit('device_status_update', data);
     });
 
     socket.on('send_command', (data) => {
-        // e.g. command: 'take_photo', 'fetch_sms', 'lock_screen', 'ring_phone'
-        io.to(`device_${data.deviceId}`).emit('remote_command', data);
+        // Broadcast remote command to targeted mobile device
+        io.emit('remote_command', data);
     });
 
     socket.on('screen_frame', (data) => {
         // Stream frame from remote device to web frontend
-        io.to(`device_${data.deviceId}`).emit('remote_screen_frame', data);
+        io.emit('remote_screen_frame', data);
     });
 
     socket.on('disconnect', () => {
