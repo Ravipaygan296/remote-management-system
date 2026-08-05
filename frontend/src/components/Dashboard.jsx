@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { io } from 'socket.io-client';
+import axios from 'axios';
 import Devices from './Devices';
 import PhoneCloneView from './PhoneCloneView';
 import MediaViewer from './MediaViewer';
@@ -10,12 +12,85 @@ import ScreenMirror from './ScreenMirror';
 import FileManager from './FileManager';
 import CompanionGuide from './CompanionGuide';
 
+import { API_BASE_URL } from '../config';
 import { MOCK_DEVICES } from '../mockData';
 
 function Dashboard({ token, onLogout }) {
   const [activeTab, setActiveTab] = useState('clone');
   const [devices, setDevices] = useState(MOCK_DEVICES);
   const [activeDevice, setActiveDevice] = useState(MOCK_DEVICES[0]);
+  const [liveConnected, setLiveConnected] = useState(false);
+
+  useEffect(() => {
+    // 1. Fetch saved devices from backend API if available
+    const fetchRealDevices = async () => {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/api/devices`, {
+          headers: { authorization: token }
+        });
+        if (res.data && res.data.length > 0) {
+          setDevices(res.data);
+          setActiveDevice(res.data[0]);
+        }
+      } catch (err) {
+        console.log('Using local device state, waiting for live telemetry socket...');
+      }
+    };
+    fetchRealDevices();
+
+    // 2. Connect WebSockets to live Render backend to receive real mobile telemetry
+    const socket = io(API_BASE_URL, {
+      transports: ['websocket', 'polling']
+    });
+
+    socket.on('connect', () => {
+      console.log('Connected to backend WebSocket:', socket.id);
+      socket.emit('join_device', 'all');
+    });
+
+    // Listen for live pings from the Android phone agent
+    socket.on('device_status_update', (realData) => {
+      console.log('Real device telemetry received:', realData);
+      setLiveConnected(true);
+
+      const liveDevice = {
+        _id: realData.deviceId || 'live_phone_1',
+        name: realData.deviceName || realData.model || 'Live Android Phone',
+        modelName: realData.model || 'Android Agent Device',
+        osVersion: realData.os || 'Android 14',
+        status: 'online',
+        batteryLevel: realData.batteryLevel !== undefined ? realData.batteryLevel : 88,
+        isCharging: realData.isCharging || false,
+        storageUsed: realData.storageUsed || 42.1,
+        storageTotal: realData.storageTotal || 256,
+        networkType: '4G/5G Cellular',
+        ipAddress: realData.ip || 'Cloud Socket',
+        lastSeen: 'Just now (Live)'
+      };
+
+      setDevices((prevDevices) => {
+        const index = prevDevices.findIndex((d) => d._id === liveDevice._id || d.name === liveDevice.name);
+        if (index !== -1) {
+          const updated = [...prevDevices];
+          updated[index] = liveDevice;
+          return updated;
+        } else {
+          return [liveDevice, ...prevDevices];
+        }
+      });
+
+      setActiveDevice((current) => {
+        if (!current || current._id.startsWith('dev_') || current._id === liveDevice._id) {
+          return liveDevice;
+        }
+        return current;
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [token]);
 
   return (
     <div className="app-container">
@@ -27,13 +102,25 @@ function Dashboard({ token, onLogout }) {
           </div>
           <div>
             <div className="brand-title">OmniSync Mobile Control</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Remote Device Management & Phone Clone Portal</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Remote Device Management & Phone Clone Portal
+            </div>
           </div>
         </div>
 
-        <div className="user-controls">
+        <div className="user-controls" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {liveConnected ? (
+            <span className="badge badge-online" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}>
+              🟢 Live Telemetry Stream Active
+            </span>
+          ) : (
+            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', padding: '0.3rem 0.6rem', borderRadius: 'var(--radius-sm)' }}>
+              ☁️ Waiting for Phone Socket Ping...
+            </span>
+          )}
+
           <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-            Logged in as <strong style={{ color: 'white' }}>Admin Operator</strong>
+            Operator: <strong style={{ color: 'white' }}>Admin</strong>
           </span>
           <button className="btn btn-secondary btn-sm" onClick={onLogout}>
             <i className="fa-solid fa-right-from-bracket"></i> Logout
