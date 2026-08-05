@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MOCK_CONTACTS } from '../mockData';
 
 function ContactsViewer({ token, activeDevice, liveContacts }) {
-  const [contacts, setContacts] = useState(MOCK_CONTACTS);
+  const [contacts, setContacts] = useState([]);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -11,7 +10,7 @@ function ContactsViewer({ token, activeDevice, liveContacts }) {
         _id: `c_${idx}`,
         name: c.name || 'Contact',
         phone: c.phone || '',
-        email: c.email || 'No email',
+        email: c.email || '',
         starred: false
       }));
       setContacts(formatted);
@@ -21,9 +20,27 @@ function ContactsViewer({ token, activeDevice, liveContacts }) {
   const filtered = contacts.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search) ||
-      (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
+      c.phone.includes(search)
   );
+
+  if (!liveContacts || liveContacts.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+            Device Contacts Directory ({activeDevice ? activeDevice.name : 'Select Device'})
+          </h2>
+        </div>
+        <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
+          <i className="fa-solid fa-address-book" style={{ fontSize: '3rem', color: 'var(--accent-primary)', marginBottom: '1rem', display: 'block', opacity: 0.5 }}></i>
+          <h3 style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Waiting for Live Contacts Data...</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+            Open the OmniSync app and grant <strong>Contacts</strong> permission.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -33,15 +50,13 @@ function ContactsViewer({ token, activeDevice, liveContacts }) {
             Device Contacts Directory ({activeDevice ? activeDevice.name : 'Select Device'})
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Remotely access saved phone address book contacts and emails.
+            Remotely access saved phone address book contacts.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          {liveContacts && liveContacts.length > 0 && (
-            <span className="badge badge-online">
-              🟢 Live Extracted Contacts ({liveContacts.length})
-            </span>
-          )}
+          <span className="badge badge-online">
+            🟢 Live Extracted Contacts ({liveContacts.length})
+          </span>
           <div style={{ width: '280px' }}>
             <input
               type="text"
@@ -68,24 +83,19 @@ function ContactsViewer({ token, activeDevice, liveContacts }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '1.3rem',
-                fontWeight: 700
+                fontWeight: 700,
+                flexShrink: 0
               }}
             >
-              {contact.initial || (contact.name ? contact.name.charAt(0) : 'C')}
+              {contact.name ? contact.name.charAt(0).toUpperCase() : 'C'}
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {contact.name}
-                </h4>
-                {contact.starred && <i className="fa-solid fa-star" style={{ color: 'var(--accent-warning)', fontSize: '0.85rem' }}></i>}
-              </div>
+              <h4 style={{ fontSize: '1.05rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {contact.name}
+              </h4>
               <div style={{ fontSize: '0.85rem', color: 'var(--accent-primary)', marginTop: '2px' }}>
                 <i className="fa-solid fa-phone" style={{ fontSize: '0.75rem' }}></i> {contact.phone}
-              </div>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }}>
-                <i className="fa-solid fa-envelope" style={{ fontSize: '0.75rem' }}></i> {contact.email}
               </div>
             </div>
           </div>

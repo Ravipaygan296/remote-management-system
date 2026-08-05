@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MOCK_MESSAGES } from '../mockData';
 
 function MessagesViewer({ token, activeDevice, liveSms }) {
-  const [conversations, setConversations] = useState(MOCK_MESSAGES);
+  const [conversations, setConversations] = useState([]);
   const [activeThreadIndex, setActiveThreadIndex] = useState(0);
   const [newSmsText, setNewSmsText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,21 +21,22 @@ function MessagesViewer({ token, activeDevice, liveSms }) {
         }
         grouped[sender].threads.push({
           id: sms.id || Date.now() + Math.random(),
-          body: sms.text,
+          body: sms.text || '',
           direction: sms.type || 'incoming',
           time: new Date(sms.date || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         });
       });
-      setConversations(Object.values(grouped));
+      const sorted = Object.values(grouped).sort((a, b) => b.threads.length - a.threads.length);
+      setConversations(sorted);
+      setActiveThreadIndex(0);
     }
   }, [liveSms]);
 
-  const activeThread = conversations[activeThreadIndex] || conversations[0];
+  const activeThread = conversations[activeThreadIndex] || null;
 
   const handleSendRemoteSms = (e) => {
     e.preventDefault();
-    if (!newSmsText.trim()) return;
-
+    if (!newSmsText.trim() || !activeThread) return;
     const updated = [...conversations];
     const target = updated[activeThreadIndex];
     if (target) {
@@ -56,6 +56,29 @@ function MessagesViewer({ token, activeDevice, liveSms }) {
     c.phoneNumber.includes(searchQuery)
   );
 
+  // Show waiting state if no live SMS data received yet
+  if (!liveSms || liveSms.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+            SMS & Messages Monitor ({activeDevice ? activeDevice.name : 'Select Device'})
+          </h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            Remotely view SMS text messages, OTP alerts, and send SMS from the connected mobile phone.
+          </p>
+        </div>
+        <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
+          <i className="fa-solid fa-comments" style={{ fontSize: '3rem', color: 'var(--accent-primary)', marginBottom: '1rem', display: 'block', opacity: 0.5 }}></i>
+          <h3 style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Waiting for Live SMS Data...</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+            SMS permission may not be granted on the phone. Open the OmniSync app on your phone and tap <strong>"Allow"</strong> when Android asks for SMS permission.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -67,11 +90,9 @@ function MessagesViewer({ token, activeDevice, liveSms }) {
             Remotely view SMS text messages, OTP alerts, and send SMS from the connected mobile phone.
           </p>
         </div>
-        {liveSms && liveSms.length > 0 && (
-          <span className="badge badge-online">
-            🟢 Live Extracted SMS ({liveSms.length} items)
-          </span>
-        )}
+        <span className="badge badge-online">
+          🟢 Live Extracted SMS ({liveSms.length} messages)
+        </span>
       </div>
 
       <div className="messages-container">
@@ -118,7 +139,7 @@ function MessagesViewer({ token, activeDevice, liveSms }) {
                   <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>{activeThread.contactName}</div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{activeThread.phoneNumber}</div>
                 </div>
-                <span className="badge badge-online">Device Synced</span>
+                <span className="badge badge-online">Live Synced</span>
               </div>
 
               <div className="chat-history">

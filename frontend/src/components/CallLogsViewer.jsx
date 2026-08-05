@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { MOCK_CALL_LOGS } from '../mockData';
 
 function CallLogsViewer({ token, activeDevice, liveCallLogs }) {
-  const [callLogs, setCallLogs] = useState(MOCK_CALL_LOGS);
+  const [callLogs, setCallLogs] = useState([]);
   const [filterType, setFilterType] = useState('all');
 
   useEffect(() => {
@@ -47,6 +46,26 @@ function CallLogsViewer({ token, activeDevice, liveCallLogs }) {
     }
   };
 
+  // Show waiting state if no live call log data received
+  if (!liveCallLogs || liveCallLogs.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
+            Call History & Logs ({activeDevice ? activeDevice.name : 'Select Device'})
+          </h2>
+        </div>
+        <div className="glass-card" style={{ padding: '3rem', textAlign: 'center' }}>
+          <i className="fa-solid fa-phone-volume" style={{ fontSize: '3rem', color: 'var(--accent-primary)', marginBottom: '1rem', display: 'block', opacity: 0.5 }}></i>
+          <h3 style={{ color: 'var(--text-muted)', fontWeight: 500 }}>Waiting for Live Call Log Data...</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+            Open the OmniSync app on your phone and grant <strong>Call Log</strong> permission.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -58,36 +77,22 @@ function CallLogsViewer({ token, activeDevice, liveCallLogs }) {
             Inspect call logs including incoming calls, dialed numbers, missed calls, and call durations.
           </p>
         </div>
-        {liveCallLogs && liveCallLogs.length > 0 && (
-          <span className="badge badge-online">
-            🟢 Live Extracted Call History ({liveCallLogs.length} logs)
-          </span>
-        )}
+        <span className="badge badge-online">
+          🟢 Live Extracted Call History ({liveCallLogs.length} logs)
+        </span>
       </div>
 
       <div className="glass-card" style={{ padding: '0.75rem 1.25rem', display: 'flex', gap: '0.75rem' }}>
-        <button
-          className={`btn btn-sm ${filterType === 'all' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setFilterType('all')}
-        >
+        <button className={`btn btn-sm ${filterType === 'all' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilterType('all')}>
           All Calls ({callLogs.length})
         </button>
-        <button
-          className={`btn btn-sm ${filterType === 'incoming' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setFilterType('incoming')}
-        >
+        <button className={`btn btn-sm ${filterType === 'incoming' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilterType('incoming')}>
           Incoming
         </button>
-        <button
-          className={`btn btn-sm ${filterType === 'outgoing' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setFilterType('outgoing')}
-        >
+        <button className={`btn btn-sm ${filterType === 'outgoing' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilterType('outgoing')}>
           Outgoing
         </button>
-        <button
-          className={`btn btn-sm ${filterType === 'missed' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setFilterType('missed')}
-        >
+        <button className={`btn btn-sm ${filterType === 'missed' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setFilterType('missed')}>
           Missed
         </button>
       </div>
