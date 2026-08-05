@@ -4,7 +4,7 @@ function PhoneCloneView({ activeDevice }) {
   const [currentApp, setCurrentApp] = useState('Home');
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [streamActive, setStreamActive] = useState(true);
-  const [lastAction, setLastAction] = useState('Connected — 60 FPS WebRTC Stream');
+  const [lastAction, setLastAction] = useState('Connected — 60 FPS Telemetry Stream');
   const [volumeLevel, setVolumeLevel] = useState(80);
 
   const apps = [
@@ -30,15 +30,19 @@ function PhoneCloneView({ activeDevice }) {
     setLastAction(`Remote button pressed: ${action}`);
   };
 
+  const deviceBattery = activeDevice ? activeDevice.batteryLevel : 88;
+  const deviceName = activeDevice ? activeDevice.name : 'Motorola Edge 40 Neo';
+  const networkInfo = activeDevice ? activeDevice.networkType : '5G Cellular';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: 700 }}>
-            1:1 Phone Clone Mirror ({activeDevice ? activeDevice.name : 'Select Device'})
+            1:1 Phone Clone Mirror ({deviceName})
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            Interactive real-time replica of the mobile screen. Click any app or button to interact with the device.
+            Interactive real-time replica of {deviceName}. Click any app or button to interact with the device.
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
@@ -76,8 +80,8 @@ function PhoneCloneView({ activeDevice }) {
                 <span style={{ fontWeight: 600 }}>12:51 PM</span>
                 <span style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                   <i className="fa-solid fa-bell-slash" style={{ fontSize: '0.7rem' }}></i>
-                  <i className="fa-solid fa-wifi"></i> 5G
-                  <i className="fa-solid fa-battery-three-quarters" style={{ color: 'var(--accent-success)' }}></i> 88%
+                  <i className="fa-solid fa-wifi"></i> {networkInfo}
+                  <i className="fa-solid fa-battery-three-quarters" style={{ color: deviceBattery > 20 ? 'var(--accent-success)' : 'var(--accent-danger)' }}></i> {deviceBattery}%
                 </span>
               </div>
 
@@ -101,27 +105,18 @@ function PhoneCloneView({ activeDevice }) {
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    <span>NOTIFICATIONS (3)</span>
+                    <span>NOTIFICATIONS (2)</span>
                     <span style={{ cursor: 'pointer', color: 'var(--accent-primary)' }} onClick={() => setNotificationOpen(false)}>
                       Close Shade ▲
                     </span>
                   </div>
 
                   <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
-                    <div style={{ fontWeight: 600, color: '#25d366' }}>
-                      <i className="fa-brands fa-whatsapp"></i> WhatsApp • Sarah Jenkins
-                    </div>
-                    <div style={{ color: 'var(--text-muted)', marginTop: '2px' }}>
-                      "Awesome, can you check the device photos from yesterday?"
-                    </div>
-                  </div>
-
-                  <div style={{ background: 'var(--bg-secondary)', padding: '0.75rem', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem' }}>
                     <div style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>
-                      <i className="fa-solid fa-comment-dots"></i> SMS Alert • Bank OTP
+                      <i className="fa-solid fa-satellite-dish"></i> OmniSync Agent Active
                     </div>
                     <div style={{ color: 'var(--text-muted)', marginTop: '2px' }}>
-                      Your verification code for Login is 849201.
+                      Connected to Cloud — {deviceName} ({deviceBattery}% Battery)
                     </div>
                   </div>
                 </div>
@@ -185,7 +180,7 @@ function PhoneCloneView({ activeDevice }) {
                       <i className={apps.find((a) => a.id === currentApp)?.icon || 'fa-solid fa-mobile'} style={{ fontSize: '3rem', color: 'var(--accent-primary)', marginBottom: '0.75rem' }}></i>
                       <div style={{ fontWeight: 600, color: 'white' }}>Active {currentApp} View</div>
                       <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                        Simulating 1:1 touch stream input
+                        Connected to {deviceName}
                       </div>
                     </div>
                   </div>
@@ -257,9 +252,9 @@ function PhoneCloneView({ activeDevice }) {
           <div className="glass-card">
             <h3 style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>Live Stream Diagnostics</h3>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div>Active Device: <strong style={{ color: 'white' }}>{deviceName}</strong></div>
               <div>Resolution: 1080 x 2400 (60 FPS)</div>
               <div>Codec: WebRTC H.264 High Profile</div>
-              <div>Stream Latency: 24 ms</div>
               <div style={{ color: 'var(--accent-success)', fontWeight: 500, marginTop: '4px' }}>
                 Status: {lastAction}
               </div>
